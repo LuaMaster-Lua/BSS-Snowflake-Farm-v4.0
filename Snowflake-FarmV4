@@ -1,0 +1,111 @@
+task.wait(6)
+
+local player = game.Players.LocalPlayer
+local collectibles = workspace:WaitForChild("Collectibles")
+local TeleportService = game:GetService("TeleportService")
+
+local collectedSnowflakes = {}
+local totalCollected = 0
+local maxSnowflakes = 8
+local isCollecting = false
+
+local character
+local humanoid
+local humanoidRootPart
+
+local function updateCharacter()
+	character = player.Character or player.CharacterAdded:Wait()
+	humanoid = character:WaitForChild("Humanoid")
+	humanoidRootPart = character:WaitForChild("HumanoidRootPart")
+end
+
+updateCharacter()
+
+player.CharacterAdded:Connect(function()
+	task.wait(1)
+	updateCharacter()
+	isCollecting = false
+end)
+
+-- 🔍 SOLO DECAL
+local function isSnowflake(part)
+	if not part:IsA("BasePart") then return false end
+
+	for _, child in pairs(part:GetChildren()) do
+		if child:IsA("Decal") and string.find(child.Texture, "6087969886") then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function rejoinServer()
+	local placeId = game.PlaceId
+	local jobId = game.JobId
+
+	local success = pcall(function()
+		TeleportService:TeleportToPlaceInstance(placeId, jobId, player)
+	end)
+
+	if not success then
+		task.wait(1)
+		TeleportService:Teleport(placeId, player)
+	end
+end
+
+local function collectSnowflake(snowflake)
+	if collectedSnowflakes[snowflake] or isCollecting or totalCollected >= maxSnowflakes then return end
+	collectedSnowflakes[snowflake] = true
+	isCollecting = true
+
+	task.wait(0.5)
+
+	if snowflake and snowflake.Parent and character and humanoid and humanoidRootPart then
+		local randomAngle = math.random() * math.pi * 2
+		local offsetX = math.cos(randomAngle) * 8
+		local offsetZ = math.sin(randomAngle) * 8
+		local offset = Vector3.new(offsetX, 0, offsetZ)
+
+		humanoidRootPart.CFrame = CFrame.new(snowflake.Position + offset)
+		task.wait(0.3)
+
+		humanoid:MoveTo(snowflake.Position)
+
+		local timeout = tick() + 5
+		while (humanoidRootPart.Position - snowflake.Position).Magnitude > 4 
+			and tick() < timeout 
+			and snowflake.Parent do
+			task.wait(0.1)
+		end
+
+		totalCollected = totalCollected + 1
+		isCollecting = false
+
+		if totalCollected >= maxSnowflakes then
+			task.wait(1)
+			rejoinServer()
+		end
+	else
+		isCollecting = false
+	end
+end
+
+collectibles.ChildAdded:Connect(function(child)
+	if isSnowflake(child) and not isCollecting and totalCollected < maxSnowflakes then
+		task.spawn(collectSnowflake, child)
+	end
+end)
+
+for _, v in pairs(collectibles:GetChildren()) do
+	if isSnowflake(v) and totalCollected < maxSnowflakes then
+		task.spawn(collectSnowflake, v)
+	end
+end
+
+-- ANTI-AFK
+local vu = game:GetService("VirtualUser")
+player.Idled:Connect(function()
+	vu:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+	vu:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+end)
